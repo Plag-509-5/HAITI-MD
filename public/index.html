@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>PLAG AI · Studio</title>
+    <meta name="description" content="PLAG AI — l'interface de chat nouvelle génération créée par PLAG-TECH." />
+    <meta name="theme-color" content="#06070c" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="aurora" aria-hidden="true">
+      <span class="blob blob-1"></span>
+      <span class="blob blob-2"></span>
+      <span class="blob blob-3"></span>
+      <span class="grid"></span>
+      <span class="noise"></span>
+    </div>
+
+    <div class="app">
+      <!-- ---------------- Barre latérale ---------------- -->
+      <aside class="sidebar" id="sidebar" aria-label="Historique des discussions">
+        <div class="sidebar-head">
+          <a class="brand" href="/" aria-label="PLAG AI, accueil">
+            <span class="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none">
+                <path d="M9 23V9.5A2.5 2.5 0 0 1 11.5 7H18a6.5 6.5 0 0 1 0 13h-4" stroke="url(#g1)" stroke-width="2.4" stroke-linecap="round" />
+                <circle cx="22.5" cy="23" r="2.5" fill="url(#g2)" />
+                <defs>
+                  <linearGradient id="g1" x1="6" y1="6" x2="26" y2="24" gradientUnits="userSpaceOnUse">
+                    <stop stop-color="#6be8ff" />
+                    <stop offset="1" stop-color="#a78bfa" />
+                  </linearGradient>
+                  <linearGradient id="g2" x1="20" y1="20" x2="25" y2="26" gradientUnits="userSpaceOnUse">
+                    <stop stop-color="#ff8ad8" />
+                    <stop offset="1" stop-color="#a78bfa" />
+                  </linearGradient>
+                </defs>
+              </svg>
+            </span>
+            <span class="brand-text">
+              <strong>PLAG AI</strong>
+              <small>par PLAG-TECH</small>
+            </span>
+          </a>
+          <button class="icon-btn sidebar-close" id="sidebarClose" aria-label="Fermer le menu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round" /></svg>
+          </button>
+        </div>
+
+        <button class="new-chat" id="newChatBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14" stroke-linecap="round" /></svg>
+          Nouvelle discussion
+          <kbd>⌘K</kbd>
+        </button>
+
+        <div class="sidebar-label">
+          <span>Discussions</span>
+          <button class="link-btn" id="clearAllBtn" type="button">Tout effacer</button>
+        </div>
+        <nav class="history" id="history"></nav>
+
+        <div class="sidebar-foot">
+          <div class="status-pill" id="statusPill" data-state="checking">
+            <span class="dot"></span>
+            <span class="status-text">Vérification de l'API…</span>
+          </div>
+          <div class="foot-actions">
+            <button class="icon-btn" id="themeBtn" type="button" title="Changer de thème" aria-label="Changer de thème">
+              <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.2" /><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4" stroke-linecap="round" /></svg>
+              <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" stroke-linejoin="round" /></svg>
+            </button>
+            <button class="icon-btn" id="exportBtn" type="button" title="Exporter en Markdown" aria-label="Exporter la discussion">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0 4-4m-4 4-4-4" stroke-linecap="round" stroke-linejoin="round" /><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke-linecap="round" /></svg>
+            </button>
+            <span class="build">v1.0</span>
+          </div>
+        </div>
+      </aside>
+
+      <div class="scrim" id="scrim" hidden></div>
+
+      <!-- ---------------- Zone principale ---------------- -->
+      <main class="main">
+        <header class="topbar">
+          <button class="icon-btn menu-btn" id="menuBtn" type="button" aria-label="Ouvrir le menu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 7h16M4 12h16M4 17h11" stroke-linecap="round" /></svg>
+          </button>
+          <div class="title-wrap">
+            <h1 id="chatTitle">Nouvelle discussion</h1>
+            <p id="chatSub">PLAG AI · créée par PLAG-TECH</p>
+          </div>
+          <div class="top-actions">
+            <span class="live-badge" id="liveBadge"><span class="dot"></span><span class="badge-text">PLAG AI</span></span>
+            <button class="icon-btn" id="regenBtn" type="button" title="Régénérer la réponse" aria-label="Régénérer la réponse">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 11a8 8 0 1 0-2.6 5.9" stroke-linecap="round" /><path d="M20 4.5V11h-6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </button>
+          </div>
+        </header>
+
+        <div class="notice" id="demoNotice" hidden>
+          <span class="n-icon" aria-hidden="true">⚡</span>
+          <div class="n-body">
+            <strong id="demoNoticeTitle">Mode démo</strong>
+            <span id="demoNoticeText">L'API PLAG AI n'est pas joignable depuis ce navigateur — les réponses sont simulées. Démarre le site là où tourne l'API, puis recharge la page.</span>
+          </div>
+          <button class="n-close" id="demoNoticeClose" type="button" aria-label="Masquer l'avertissement">✕</button>
+        </div>
+
+        <div class="thread" id="thread">
+          <div class="thread-inner" id="threadInner"></div>
+        </div>
+
+        <footer class="composer-wrap">
+          <form class="composer" id="composer" autocomplete="off">
+            <div class="composer-field">
+              <textarea id="input" rows="1" placeholder="Écris ton message…  (Entrée pour envoyer, Maj+Entrée pour un saut de ligne)" aria-label="Message"></textarea>
+            </div>
+            <div class="composer-bar">
+              <div class="chips">
+                <button class="chip" id="thinkChip" type="button" aria-pressed="false" title="Laisser PLAG AI réfléchir avant de répondre">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 4.5a2.8 2.8 0 0 0-2.8 2.8c-1.3.5-2.2 1.7-2.2 3.2 0 .9.4 1.8 1 2.4-.2 1.7 1.1 3.3 2.9 3.5.4 1 1.4 1.6 2.5 1.6h.6V4.5H9Z" stroke-linejoin="round" /><path d="M15 4.5a2.8 2.8 0 0 1 2.8 2.8c1.3.5 2.2 1.7 2.2 3.2 0 .9-.4 1.8-1 2.4.2 1.7-1.1 3.3-2.9 3.5-.4 1-1.4 1.6-2.5 1.6H13" stroke-linejoin="round" /></svg>
+                  Réflexion
+                </button>
+                <button class="chip" id="micBtn" type="button" aria-pressed="false" title="Dicter le message">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3" stroke-linecap="round" /></svg>
+                  Dicter
+                </button>
+                <span class="chip chip-info" id="modeInfo" hidden></span>
+              </div>
+              <div class="send-group">
+                <button class="send-btn" id="sendBtn" type="submit">
+                  <span class="send-label">Envoyer</span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4.5 12.5 20 4l-6.2 16-2.6-6.3-6.7-1.2Z" stroke-linejoin="round" /></svg>
+                </button>
+                <button class="stop-btn" id="stopBtn" type="button" hidden>
+                  <span class="square"></span> Stop
+                </button>
+              </div>
+            </div>
+          </form>
+          <p class="disclaimer">
+            PLAG AI peut se tromper — vérifie les informations importantes.
+            <button class="link-btn" id="shortcutsBtn" type="button">Raccourcis</button>
+          </p>
+        </footer>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <dialog class="modal" id="shortcutsModal">
+      <h2>Raccourcis clavier</h2>
+      <ul>
+        <li><kbd>Entrée</kbd><span>Envoyer</span></li>
+        <li><kbd>Maj</kbd> + <kbd>Entrée</kbd><span>Nouvelle ligne</span></li>
+        <li><kbd>⌘K</kbd> / <kbd>Ctrl K</kbd><span>Nouvelle discussion</span></li>
+        <li><kbd>Échap</kbd><span>Arrêter la génération</span></li>
+      </ul>
+      <form method="dialog"><button class="send-btn">Fermer</button></form>
+    </dialog>
+
+    <script src="/markdown.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>
