@@ -1,0 +1,17 @@
+{
+  "name": "plag-ai-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PLAG AI · Studio — interface de chat nouvelle génération pour l'API PLAG AI (PLAG-TECH).",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "mock": "node tools/mock-upstream.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": ["plag-ai", "plag-tech", "chat", "ia", "haiti"],
+  "license": "MIT"
+}
