@@ -62,7 +62,7 @@
         <nav class="history" id="history"></nav>
 
         <div class="sidebar-foot">
-          <div class="status-pill" id="statusPill" data-state="checking">
+          <div class="status-pill" id="statusPill" data-state="checking" role="button" tabindex="0" title="Tester la connexion à l'API PLAG AI">
             <span class="dot"></span>
             <span class="status-text">Vérification de l'API…</span>
           </div>
@@ -104,6 +104,10 @@
           <div class="n-body">
             <strong id="demoNoticeTitle">Mode démo</strong>
             <span id="demoNoticeText">L'API PLAG AI n'est pas joignable depuis ce navigateur — les réponses sont simulées. Démarre le site là où tourne l'API, puis recharge la page.</span>
+            <div class="n-actions">
+              <button class="n-test" id="demoNoticeTest" type="button">Tester la connexion</button>
+              <span class="diag" id="diagOut" hidden></span>
+            </div>
           </div>
           <button class="n-close" id="demoNoticeClose" type="button" aria-label="Masquer l'avertissement">✕</button>
         </div>

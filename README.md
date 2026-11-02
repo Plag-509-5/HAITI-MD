@@ -49,12 +49,23 @@ Copie `.env.example` en `.env` :
 | --- | --- | --- |
 | `PORT` | `3000` | Port de l'interface |
 | `HOST` | `0.0.0.0` | Interface d'écoute |
-| `PLAG_API_URL` | `http://127.0.0.1:8765/v1/chat` | Endpoint de chat |
+| `PLAG_API_URL` | `http://127.0.0.1:8765/v1/chat` | Endpoint de chat (prioritaire) |
+| `PLAG_API_URL_FALLBACK` | — | Endpoint(s) de repli, séparés par des virgules |
 | `PLAG_API_KEY` | — | Clé API (prioritaire) |
 | `PLAG_API_KEY_FILE` | `/etc/plag-ai/api.key` | Fichier de clé si `PLAG_API_KEY` est vide |
 | `PLAG_TIMEOUT_MS` | `300000` | Délai maximum d'une réponse |
 
 La clé est aussi cherchée dans `.plag-ai-key` à la racine du projet.
+
+**Deux endpoints à la fois.** Le serveur sonde les URLs dans l'ordre (sonde HTTP, mise en cache 8 s)
+et utilise la première qui répond. Exemple typique :
+
+```bash
+PLAG_API_URL=http://127.0.0.1:8765/v1/chat            # sur la machine de l'API → rapide
+PLAG_API_URL_FALLBACK=http://203.0.113.42:8765/v1/chat # depuis ailleurs → IP publique
+```
+
+Le même `.env` fonctionne donc en local **et** à distance, sans rien changer.
 
 ---
 
@@ -69,6 +80,7 @@ La clé est aussi cherchée dans `.plag-ai-key` à la racine du projet.
 - **Thème clair / sombre**, responsive mobile (menu latéral coulissant).
 - **Dictée vocale** (Web Speech API, `fr-FR`) si le navigateur la supporte.
 - **Mode démo** automatique : si l'API est injoignable, l'interface reste utilisable et annonce clairement le mode démo.
+- **Test de connexion** intégré : bouton « Tester la connexion » (ou clic sur la pastille d'état) → latence, code HTTP, message d'erreur exact de l'API.
 - Raccourcis : `Entrée` envoyer · `Maj+Entrée` nouvelle ligne · `⌘/Ctrl+K` nouvelle discussion · `Échap` stop.
 
 ---
@@ -91,7 +103,8 @@ Aucune modification n'est donc nécessaire si l'API PLAG AI évolue légèrement
 | Route | Description |
 | --- | --- |
 | `POST /api/chat` | Proxy vers PLAG AI (`{ messages, think, stream }`) |
-| `GET /api/health` | État : `{ reachable, hasKey, mode: "live" \| "demo" }` |
+| `GET /api/health` | État : `{ reachable, hasKey, mode: "live" \| "demo", upstream }` |
+| `POST /api/ping` | **Test réel** : envoie une mini-requête signée et renvoie latence, statut HTTP et début de réponse |
 
 ---
 
@@ -125,13 +138,21 @@ PLAG_API_URL=http://127.0.0.1:8765/v1/chat PLAG_API_KEY=dev npm start
 └── package.json
 ```
 
+## Sécurité
+
+- La clé API reste **côté serveur** : le navigateur ne reçoit jamais `X-API-Key`, aucun secret n'est écrit dans le HTML ou le JS.
+- `.env` est ignoré par Git. Ne committe jamais ta clé ; en cas de fuite, **régénère-la**.
+- Exposer l'API sur une **IP publique** en HTTP simple fait circuler la clé **en clair** : place de préférence un reverse-proxy **HTTPS** (Caddy, Nginx, Cloudflare Tunnel), restreins les IP autorisées par pare-feu, et n'ouvre le port que si nécessaire.
+- L'interface n'a pas d'authentification : si tu la publies, protège-la (mot de passe, VPN, Cloudflare Access…).
+
 ## Dépannage
 
 | Symptôme | Cause probable |
 | --- | --- |
 | Pastille « Mode démo · API hors ligne » | Le service PLAG AI n'écoute pas sur l'URL configurée (`curl` l'endpoint pour vérifier). |
 | « Mode démo · clé API absente » | Ni `PLAG_API_KEY`, ni `/etc/plag-ai/api.key`, ni `.plag-ai-key`. |
-| Erreur 401/403 | Clé refusée par l'API. |
+| Erreur 401/403 | Clé refusée par l'API — teste avec le bouton **Tester la connexion**. |
+| « Impossible de joindre … depuis ce serveur » | L'API n'est pas accessible depuis la machine qui fait tourner `server.js` (pare-feu, port fermé, IP changée). |
 | Rien ne s'affiche après envoi | Vérifie la console du navigateur et les logs de `server.js`. |
 
 ---

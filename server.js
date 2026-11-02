@@ -15,7 +15,6 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
-const net = require('node:net');
 
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, 'public');
@@ -44,6 +43,17 @@ const CONFIG = {
   keyFile: process.env.PLAG_API_KEY_FILE || '/etc/plag-ai/api.key',
   timeout: Number(process.env.PLAG_TIMEOUT_MS || 300000),
 };
+
+/** Endpoints candidats : PLAG_API_URL d'abord, puis les replis (séparés par des virgules). */
+CONFIG.upstreams = [...new Set(
+  [CONFIG.upstream]
+    .concat(String(process.env.PLAG_API_URL_FALLBACK || '').split(','))
+    .map((u) => u.trim())
+    .filter(Boolean)
+)];
+
+let upstreamCache = { url: null, at: 0 };
+const UPSTREAM_CACHE_MS = 8000;
 
 function readKey() {
   if (process.env.PLAG_API_KEY && process.env.PLAG_API_KEY.trim()) {
@@ -181,6 +191,26 @@ function extractFromJson(raw) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Choix de l'endpoint joignable                                       */
+/* ------------------------------------------------------------------ */
+
+async function resolveUpstream(force = false) {
+  const now = Date.now();
+  if (!force && upstreamCache.url && now - upstreamCache.at < UPSTREAM_CACHE_MS) {
+    return upstreamCache.url;
+  }
+  for (const url of CONFIG.upstreams) {
+    // eslint-disable-next-line no-await-in-loop
+    if (await probeHttp(url, 450).catch(() => false)) {
+      upstreamCache = { url, at: now };
+      return url;
+    }
+  }
+  upstreamCache = { url: CONFIG.upstreams[0], at: now };
+  return upstreamCache.url;
+}
+
+/* ------------------------------------------------------------------ */
 /* Proxy de chat                                                       */
 /* ------------------------------------------------------------------ */
 
@@ -231,9 +261,10 @@ async function handleChat(req, res) {
   };
   res.on('close', onClientClose);
 
+  const upstream = await resolveUpstream();
   let upstreamRes;
   try {
-    upstreamRes = await fetch(CONFIG.upstream, {
+    upstreamRes = await fetch(upstream, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -248,7 +279,7 @@ async function handleChat(req, res) {
     res.off('close', onClientClose);
     const offline = err.name === 'AbortError' ? 'Délai dépassé' : 'API PLAG AI injoignable';
     return sendJson(res, 502, {
-      error: `${offline} (${CONFIG.upstream}). Vérifie que le service tourne sur ${new URL(CONFIG.upstream).host}.`,
+      error: `${offline} (${upstream}). Vérifie que le service tourne sur ${new URL(upstream).host}.`,
       code: 'UPSTREAM_UNREACHABLE',
       keySource: source,
       detail: String(err.message || err),
@@ -407,37 +438,143 @@ async function handleChat(req, res) {
 /* Santé de l'API                                                      */
 /* ------------------------------------------------------------------ */
 
-function probeTcp(url, timeout = 600) {
-  return new Promise((resolve) => {
-    let target;
-    try {
-      target = new URL(url);
-    } catch {
-      return resolve(false);
-    }
-    const port = Number(target.port || (target.protocol === 'https:' ? 443 : 80));
-    const socket = net.connect({ host: target.hostname, port });
-    const done = (value) => {
-      socket.destroy();
-      resolve(value);
-    };
-    socket.setTimeout(timeout);
-    socket.once('connect', () => done(true));
-    socket.once('timeout', () => done(false));
-    socket.once('error', () => done(false));
-  });
+/**
+ * Sonde HTTP légère : prouve que l'endpoint répond réellement au niveau HTTP
+ * (un simple connect TCP peut être accepté par un proxy d'egress puis coupé).
+ * On n'envoie volontairement pas de requête de génération ici.
+ */
+async function probeHttp(url, timeout = 1500) {
+  try {
+    const origin = new URL('/', url).toString();
+    await fetch(origin, {
+      method: 'GET',
+      redirect: 'manual',
+      signal: AbortSignal.timeout(timeout),
+      headers: { accept: '*/*' },
+    });
+    return true; // n'importe quelle réponse HTTP (200, 404, 401…) = joignable
+  } catch {
+    return false;
+  }
 }
 
 async function handleHealth(req, res) {
   const { key, source } = readKey();
-  const reachable = await probeTcp(CONFIG.upstream).catch(() => false);
+  const upstream = await resolveUpstream(true);
+  const reachable = await probeHttp(upstream).catch(() => false);
   sendJson(res, 200, {
     ok: reachable && Boolean(key),
     reachable,
     hasKey: Boolean(key),
     keySource: source,
-    upstream: CONFIG.upstream,
+    upstream,
+    upstreams: CONFIG.upstreams,
     mode: reachable && key ? 'live' : 'demo',
+  });
+}
+
+/**
+ * Test réel de la connexion : envoie une mini-requête signée à chaque endpoint
+ * configuré et renvoie latence, statut HTTP et début de réponse.
+ */
+async function pingOne(upstream, key, timeout = 12000) {
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    const upstreamRes = await fetch(upstream, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json', 'x-api-key': key },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'Réponds simplement : OK' }],
+        think: false,
+        stream: false,
+      }),
+      signal: controller.signal,
+    });
+    const ms = Date.now() - startedAt;
+    const raw = await upstreamRes.text().catch(() => '');
+    let reply = '';
+    try {
+      reply = extractFromJson(raw).text;
+    } catch {
+      reply = raw;
+    }
+    clearTimeout(timer);
+
+    if (!upstreamRes.ok) {
+      return {
+        upstream,
+        ok: false,
+        stage: 'http',
+        status: upstreamRes.status,
+        ms,
+        message:
+          upstreamRes.status === 401 || upstreamRes.status === 403
+            ? 'Clé refusée par l’API (401/403).'
+            : `L’API a répondu ${upstreamRes.status}.`,
+        detail: raw.slice(0, 300),
+      };
+    }
+    return {
+      upstream,
+      ok: Boolean(reply.trim()),
+      stage: 'ok',
+      status: upstreamRes.status,
+      ms,
+      reply: reply.trim().slice(0, 160),
+      message: reply.trim() ? 'PLAG AI répond.' : 'Réponse vide de l’API.',
+    };
+  } catch (err) {
+    clearTimeout(timer);
+    return {
+      upstream,
+      ok: false,
+      stage: 'network',
+      ms: Date.now() - startedAt,
+      message:
+        err.name === 'AbortError'
+          ? `Aucune réponse en ${Math.round(timeout / 1000)} s.`
+          : 'Endpoint injoignable depuis ce serveur.',
+      detail: String(err.message || err),
+    };
+  }
+}
+
+async function handlePing(req, res) {
+  const { key, source } = readKey();
+  if (!key) {
+    return sendJson(res, 200, {
+      ok: false,
+      stage: 'key',
+      message: 'Aucune clé API : définis PLAG_API_KEY ou /etc/plag-ai/api.key.',
+      keySource: null,
+      results: [],
+    });
+  }
+
+  // On teste tous les endpoints connus (prioritaire d'abord) sauf si ?all=0
+  const params = new URL(req.url, 'http://x').searchParams;
+  const targets = params.get('all') === '0' ? [await resolveUpstream(true)] : CONFIG.upstreams;
+  const results = [];
+  for (const target of targets) {
+    // eslint-disable-next-line no-await-in-loop
+    results.push(await pingOne(target, key));
+    if (results[results.length - 1].ok && params.get('all') !== '1') break;
+  }
+
+  const best = results.find((r) => r.ok) || results[0];
+  sendJson(res, 200, {
+    ok: Boolean(best && best.ok),
+    stage: best ? best.stage : 'network',
+    status: best && best.status,
+    ms: best && best.ms,
+    upstream: best && best.upstream,
+    keySource: source,
+    reply: best && best.reply,
+    detail: best && best.detail,
+    message: best && best.message,
+    results,
   });
 }
 
@@ -487,6 +624,7 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (url.pathname === '/api/health' && req.method === 'GET') return await handleHealth(req, res);
+    if (url.pathname === '/api/ping' && (req.method === 'POST' || req.method === 'GET')) return await handlePing(req, res);
     if (url.pathname === '/api/chat' && req.method === 'POST') return await handleChat(req, res);
     if (url.pathname.startsWith('/api/')) return sendJson(res, 404, { error: 'Endpoint inconnu.' });
     if (req.method !== 'GET' && req.method !== 'HEAD') return sendJson(res, 405, { error: 'Méthode non autorisée.' });
@@ -505,7 +643,7 @@ server.listen(CONFIG.port, CONFIG.host, () => {
   console.log('  │   PLAG AI · Studio                            │');
   console.log('  ╰───────────────────────────────────────────────╯');
   console.log(`  Interface   →  http://localhost:${CONFIG.port}`);
-  console.log(`  API PLAG AI →  ${CONFIG.upstream}`);
+  console.log(`  API PLAG AI →  ${CONFIG.upstreams.join('  |  ')}`);
   console.log(`  Clé API     →  ${key ? `chargée (${source})` : 'ABSENTE — définis PLAG_API_KEY'}`);
   console.log('');
 });

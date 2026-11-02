@@ -53,6 +53,8 @@
     demoNotice: $('#demoNotice'),
     demoNoticeTitle: $('#demoNoticeTitle'),
     demoNoticeText: $('#demoNoticeText'),
+    demoNoticeTest: $('#demoNoticeTest'),
+    diagOut: $('#diagOut'),
   };
 
   const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
@@ -737,6 +739,55 @@ Dès que l'API répond, cet écran devient un vrai chat : réponses en streaming
     notice.hidden = false;
   }
 
+  /* ---------------------- Diagnostic / test de connexion ---------------------- */
+
+  let testing = false;
+  async function testConnection() {
+    if (testing) return;
+    testing = true;
+    const btn = els.demoNoticeTest;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Test en cours…';
+    }
+    els.diagOut.hidden = false;
+    els.diagOut.className = 'diag';
+    els.diagOut.textContent = 'Envoi d’une requête signée à l’API…';
+
+    try {
+      const res = await fetch('/api/ping', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+      const data = await res.json();
+      els.diagOut.classList.add(data.ok ? 'ok' : 'ko');
+
+      const rows = (data.results && data.results.length ? data.results : [data]).map((r) => {
+        const host = (r.upstream || '').replace(/^https?:\/\//, '').replace(/\/v1\/chat$/, '');
+        const state = r.ok ? '✓' : '✕';
+        const info = r.ok
+          ? `${(r.ms / 1000).toFixed(2)} s · HTTP ${r.status}`
+          : `${r.stage === 'network' ? 'injoignable' : `HTTP ${r.status || '—'}`}${r.ms ? ` · ${(r.ms / 1000).toFixed(2)} s` : ''}`;
+        const detail = !r.ok && r.detail ? `<span class="diag-detail">${esc(String(r.detail).slice(0, 140))}</span>` : '';
+        return `<span class="diag-line">${state} <strong>${esc(host)}</strong> — ${esc(info)}</span>${detail}`;
+      });
+
+      const head = data.ok
+        ? `Connexion établie : ${esc(data.message || 'PLAG AI répond.')}`
+        : esc(data.message || 'Aucun endpoint ne répond.');
+      els.diagOut.innerHTML = `${data.ok ? '✓' : '✕'} ${head}${rows.join('')}`;
+      toast(data.ok ? 'API PLAG AI : connexion établie ✓' : 'API injoignable — voir le détail');
+      await checkHealth();
+    } catch (err) {
+      els.diagOut.classList.add('ko');
+      els.diagOut.textContent = '✕ Serveur local (server.js) injoignable : lance `npm start` puis recharge la page.';
+      toast('Test impossible : serveur local arrêté');
+    } finally {
+      testing = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Tester la connexion';
+      }
+    }
+  }
+
   async function checkHealth() {
     try {
       const res = await fetch('/api/health', { cache: 'no-store' });
@@ -896,6 +947,15 @@ Dès que l'API répond, cet écran devient un vrai chat : réponses en streaming
     els.scrim.addEventListener('click', closeSidebar);
 
     $('#shortcutsBtn').addEventListener('click', () => els.shortcutsModal.showModal());
+
+    els.demoNoticeTest.addEventListener('click', testConnection);
+    els.statusPill.addEventListener('click', testConnection);
+    els.statusPill.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        testConnection();
+      }
+    });
 
     $('#demoNoticeClose').addEventListener('click', () => {
       els.demoNotice.hidden = true;
